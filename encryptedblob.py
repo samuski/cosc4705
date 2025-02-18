@@ -1,6 +1,7 @@
 import base64
 from Crypto.Util.Padding import pad, unpad
 from Crypto.Cipher import AES
+from Crypto.Hash import HMAC, SHA256
 import imexceptions
 
 
@@ -26,10 +27,11 @@ class EncryptedBlob:
         # confkey AND authkey
 
         # pad the plaintext to make AES happy
+        cipher = AES.new(confkey, AES.MODE_CBC)
         plaintextPadded = pad(bytes(plaintext,'utf-8'),16) 
-        ciphertext = plaintextPadded  # definitely change this. :)
-        iv = bytes([0x00, 0x00, 0x00, 0x00])  # and this too!
-        mac = bytes([0x00, 0x00, 0x00, 0x00]) # and this too!
+        ciphertext = cipher.encrypt(plaintextPadded)
+        iv = cipher.iv
+        mac = HMAC.new(authkey, ciphertext, digestmod=SHA256).digest()
 
         # DON'T CHANGE THE BELOW.
         # What we're doing here is converting the iv, ciphertext,
@@ -45,23 +47,31 @@ class EncryptedBlob:
         iv = base64.b64decode(ivBase64)
         ciphertext = base64.b64decode(ciphertextBase64)
         mac = base64.b64decode(macBase64)
-        
+
+        try:
         # TODO: MODIFY THE CODE BELOW TO ACTUALLY DECRYPT
         # IF IT DOESN'T DECRYPT, YOU NEED TO RAISE A 
         # FailedDecryptionError EXCEPTION
-
+  
         # TODO: hint: in encryptThenMAC, I padded the plaintext.  You'll
         # need to unpad it.
         # See https://pycryptodome.readthedocs.io/en/v3.11.0/src/util/util.html#crypto-util-padding-module
 
+          cipher = AES.new(confkey, AES.MODE_CBC, iv)
+
         # so, this next line is definitely wrong.  :)
-        self.plaintext = "It's a wonderful day in the neighborhood."
-        
-        # TODO: DON'T FORGET TO VERIFY THE MAC!!!
+          self.plaintext = unpad(cipher.decrypt(ciphertext), AES.block_size)
+        except ValueError:
+          raise imexceptions.FailedDecryptionError("Decryption Failed.")
+
+	# TODO: DON'T FORGET TO VERIFY THE MAC!!!
         # IF IT DOESN'T VERIFY, YOU NEED TO RAISE A
         # FailedAuthenticationError EXCEPTION
-
-        raise imexceptions.FailedAuthenticationError("ruh oh!")
+          hmac = HMAC.new(authkey, ciphertext, digestmod=SHA256)
+        try:
+          hmac.verify(mac)
+        except ValueError:
+          raise imexceptions.FailedAuthenticationError("ruh oh!")
         
 
         return self.plaintext
